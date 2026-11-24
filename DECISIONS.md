@@ -526,7 +526,7 @@ diagnostic settings sending logs to the shared workspace.
 **Verification status**
 - The service, kit and alert logic are tested: service tests against real PostgreSQL, telemetry kit
   rules, SLO generator, policy gate, and a promtool test that replays the retry storm.
-- The pipeline workflows pass `actionlint`. All third-party GitHub Actions are pinned to full commit SHAs, with release-version comments. GitHub Actions passed for commit `0f6c9eb`: https://github.com/rembun/golden-path-sre/actions/runs/45474780419.
+- The pipeline workflows pass `actionlint`. All third-party GitHub Actions are pinned to full commit SHAs, with release-version comments. GitHub Actions passed for commit `7f68bff`: https://github.com/rembun/golden-path-sre/actions/runs/45504172333.
 - `make up RUNTIME=k3s` was validated on the existing k3s cluster. The default k3d path remains unverified: k3d is not installed on the assessment host. The configuration and dry-run were reviewed; no separate cluster was created.
 
 **Gaps**
