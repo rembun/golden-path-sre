@@ -1,0 +1,36 @@
+
+# Grafana Tempo 3.2.1 - single binary
+fullnameOverride: tempo
+
+tempo:
+  retention: 24h
+
+  receivers:
+    jaeger:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:14250"
+        thrift_binary:
+          endpoint: "0.0.0.0:6832"
+        thrift_compact:
+          endpoint: "0.0.0.0:6831"
+        thrift_http:
+          endpoint: "0.0.0.0:14268"
+
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+persistence:
+  enabled: true
+  size: 2Gi

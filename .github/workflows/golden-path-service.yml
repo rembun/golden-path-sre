@@ -1,0 +1,229 @@
+# Golden path: reusable pipeline for a service.
+#
+# A product team references it from their own repository with ~12 lines:
+#
+#   jobs:
+#     pipeline:
+#       uses: rembun/golden-path-sre/.github/workflows/golden-path-service.yml@v1
+#       with:
+#         kit-ref: v1                       # same version as the line above
+#         service-name: payments-api
+#         service-path: services/payments-api
+#         dockerfile: services/payments-api/Dockerfile
+#         slo-dir: slo
+#         generated-rules-dir: slo/generated
+#         generated-dashboards-dir: slo/generated
+#         deploy-script: scripts/ci-deploy.sh
+#
+# The workflow checks out the caller's code AND the kit (into .golden-path), so a team's
+# repository needs no copy of the kit.
+# Stages: test -> policy gate -> build + scan -> deploy (ephemeral kind cluster).
+# Each stage must pass before the next; nothing reaches deploy without all three.
+name: golden-path-service
+
+on:
+  workflow_call:
+    inputs:
+      kit-repository:
+        description: Repository the golden-path kit (policy gate, SLO generators, telemetry package) comes from
+        type: string
+        default: rembun/golden-path-sre
+      kit-ref:
+        description: Kit version to use. Pin the same tag you reference this workflow with (e.g. v1)
+        type: string
+        default: main
+      service-name:
+        description: Service name; also the SLO spec file name (<slo-dir>/<service-name>.yaml)
+        required: true
+        type: string
+      service-path:
+        description: Directory with the service code, requirements-dev.txt and tests
+        required: true
+        type: string
+      dockerfile:
+        required: true
+        type: string
+      build-context:
+        description: Docker build context
+        type: string
+        default: "."
+      manifests-path:
+        description: Kubernetes manifests checked by the policy gate
+        type: string
+        default: deploy
+      slo-dir:
+        type: string
+        default: kit/slo
+      generated-rules-dir:
+        description: Where the generated PrometheusRule for the service is committed
+        type: string
+        default: platform/alerts/generated
+      generated-dashboards-dir:
+        description: Where the generated dashboard ConfigMap for the service is committed
+        type: string
+        default: platform/dashboards/generated
+      deploy-script:
+        description: Script that deploys the built image to the cluster in KUBECONFIG
+        required: true
+        type: string
+      python-version:
+        type: string
+        default: "3.12"
+      scan-severity:
+        description: Vulnerability severities that fail the build (fixable ones only)
+        type: string
+        default: CRITICAL
+
+permissions:
+  contents: read
+
+env:
+  # Pinned, and at least two weeks old when chosen (see DECISIONS.md D15).
+  KUBECONFORM_VERSION: v0.8.0
+  KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+  KIND_VERSION: v0.33.0
+  KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+  TRIVY_IMAGE: docker.io/aquasec/trivy:0.76.2
+  PROMETHEUS_IMAGE: docker.io/prom/prometheus:v3.16.0
+  IMAGE: ${{ inputs.service-name }}:${{ github.sha }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: docker.io/library/postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test -d test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The kit, separately from the caller's code: a team's repo doesn't contain kit/.
+      - name: Check out the golden-path kit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ inputs.kit-repository }}
+          ref: ${{ inputs.kit-ref }}
+          path: .golden-path
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+      - name: Install
+        run: python -m pip install ./.golden-path/kit/telemetry/python -r "${{ inputs.service-path }}/requirements-dev.txt"
+      - name: Run tests (skipped tests count as a failure)
+        working-directory: ${{ inputs.service-path }}
+        run: |
+          python -m pytest -q --junitxml=/tmp/tests.xml
+          python - <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse("/tmp/tests.xml").getroot()
+          suites = [root] if root.tag == "testsuite" else root.findall(".//testsuite")
+          total = sum(int(s.get("tests", 0)) for s in suites)
+          skipped = sum(int(s.get("skipped", 0)) for s in suites)
+          print(f"tests: {total}, skipped: {skipped}")
+          sys.exit(1 if total == 0 or skipped else 0)
+          PY
+
+  policy:
+    name: Policy gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The kit, separately from the caller's code: a team's repo doesn't contain kit/.
+      - name: Check out the golden-path kit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ inputs.kit-repository }}
+          ref: ${{ inputs.kit-ref }}
+          path: .golden-path
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install
+        run: python -m pip install -r .golden-path/kit/slo/requirements.txt
+      - name: Golden-path rules (resources, probes, non-root, PDB, SLO for customer-facing services)
+        run: python .golden-path/kit/pipeline/policy_check.py --manifests "${{ inputs.manifests-path }}" --slo-dir "${{ inputs.slo-dir }}"
+      - name: Kubernetes schema validation (kubeconform, strict)
+        run: |
+          curl -sSL -o /tmp/kc.tgz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  /tmp/kc.tgz" | sha256sum -c -
+          tar -xzf /tmp/kc.tgz -C /tmp kubeconform
+          /tmp/kubeconform -strict -summary "${{ inputs.manifests-path }}"
+      - name: SLO rules are generated from the spec and up to date
+        run: |
+          spec="${{ inputs.slo-dir }}/${{ inputs.service-name }}.yaml"
+          committed="${{ inputs.generated-rules-dir }}/${{ inputs.service-name }}-slo.yaml"
+          if [ ! -f "$spec" ]; then echo "No SLO spec at $spec (internal service?), skipping."; exit 0; fi
+          python .golden-path/kit/slo/generate.py --spec "$spec" --output /tmp/generated.yaml
+          if ! diff -u "$committed" /tmp/generated.yaml; then
+            echo "::error::$committed is out of date. Run: make slo-generate, and commit the result."
+            exit 1
+          fi
+          dashboard="${{ inputs.generated-dashboards-dir }}/${{ inputs.service-name }}-dashboard.yaml"
+          python .golden-path/kit/slo/generate_dashboard.py --spec "$spec" --output /tmp/dashboard.yaml
+          if ! diff -u "$dashboard" /tmp/dashboard.yaml; then
+            echo "::error::$dashboard is out of date. Run: make slo-generate, and commit the result."
+            exit 1
+          fi
+      - name: SLO rules pass promtool
+        run: |
+          mkdir -p out
+          python .golden-path/kit/slo/extract_rules.py "${{ inputs.generated-rules-dir }}/${{ inputs.service-name }}-slo.yaml" out/rules.yaml
+          docker run --rm -v "$PWD:/work" -w /work --entrypoint promtool "$PROMETHEUS_IMAGE" check rules out/rules.yaml
+
+  build-scan:
+    name: Build and scan image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Build
+        run: docker build -f "${{ inputs.dockerfile }}" -t "$IMAGE" "${{ inputs.build-context }}"
+      - name: Scan (fails on fixable ${{ inputs.scan-severity }} vulnerabilities)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image \
+            --exit-code 1 --ignore-unfixed --severity "${{ inputs.scan-severity }}" --no-progress "$IMAGE"
+      - name: Save image for the deploy stage
+        run: docker save "$IMAGE" | gzip > /tmp/image.tar.gz
+      - uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: image
+          path: /tmp/image.tar.gz
+          retention-days: 1
+
+  deploy:
+    name: Deploy (ephemeral cluster) and smoke test
+    needs: [test, policy, build-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: image
+          path: /tmp
+      - name: Load image
+        run: gunzip -c /tmp/image.tar.gz | docker load
+      - name: Create kind cluster
+        run: |
+          curl -sSL -o /tmp/kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256}  /tmp/kind" | sha256sum -c -
+          chmod +x /tmp/kind && sudo mv /tmp/kind /usr/local/bin/kind
+          kind create cluster --name ci --wait 120s
+      - name: Deploy and smoke test
+        run: bash "${{ inputs.deploy-script }}"
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          KIND_CLUSTER: ci
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -40 || true

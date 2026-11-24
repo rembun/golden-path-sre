@@ -1,0 +1,71 @@
+# kube-prometheus-stack 93.1.0: Prometheus Operator, Prometheus, Alertmanager, Grafana.
+# Sized for a laptop. Cost-relevant settings are marked COST.
+
+# k3s runs the control-plane components inside the k3s binary, not as pods, so
+# these scrape targets don't exist. Disabling them avoids permanent false alerts.
+kubeEtcd: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+
+prometheus:
+  prometheusSpec:
+    # Pick up every ServiceMonitor and PrometheusRule in the cluster, not just
+    # the ones labelled for this Helm release. This is what lets a product team
+    # add monitoring and SLO rules from their own namespace.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    # COST: retention by time AND size, whichever is hit first.
+    retention: 30d
+    retentionSize: 4GB
+    # Exemplars link a latency bucket to an example trace in Tempo.
+    enableFeatures: [exemplar-storage]
+    scrapeInterval: 15s
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { memory: 1536Mi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources: { requests: { storage: 5Gi } }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 128Mi }
+
+grafana:
+  admin:
+    existingSecret: grafana-admin       # created by scripts/bootstrap-secrets.sh
+    userKey: admin-user
+    passwordKey: admin-password
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - grafana.sre.test
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL             # teams ship dashboards as ConfigMaps in their namespace
+    datasources:
+      exemplarTraceIdDestinations:
+        datasourceUid: tempo
+        traceIdLabelName: trace_id
+  additionalDataSources:
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      access: proxy
+      url: http://tempo.observability.svc:3200
+      jsonData:
+        tracesToMetrics:
+          datasourceUid: prometheus
+        serviceMap:
+          datasourceUid: prometheus
+  resources:
+    requests: { cpu: 500m, memory: 256Mi }
+    limits: { memory: 768Mi }

@@ -1,0 +1,41 @@
+# Runs the k6 script inside the cluster, so the load reaches the Service directly
+# (no laptop networking or ingress in the way) and needs no local k6 install.
+# Rendered and applied by `make load SCENARIO=...`.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-load
+  namespace: bookings
+  labels: { app.kubernetes.io/name: k6-load }
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: k6-load }
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: k6
+          image: docker.io/grafana/k6:1.8.2
+          args: ["run", "--quiet", "/scripts/availability.js"]
+          env:
+            - { name: SCENARIO, value: "__SCENARIO__" }
+            - { name: RATE_SCALE, value: "__RATE_SCALE__" }
+            - { name: PEAK_MINUTES, value: "__PEAK_MINUTES__" }
+          resources:
+            requests: { cpu: 500m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: scripts, mountPath: /scripts, readOnly: true }
+      volumes:
+        - name: scripts
+          configMap: { name: k6-scripts }

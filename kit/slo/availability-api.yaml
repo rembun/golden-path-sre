@@ -1,0 +1,48 @@
+service: availability-api
+namespace: bookings
+prometheus_job: bookings/availability-api
+# Linked from every alert. Repository runbook URL.
+runbook_url: https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md
+
+slo:
+  name: availability-availability
+  description: Availability requests succeed within 300 milliseconds
+  target: 0.9985
+  window: 30d
+
+sli:
+  histogram: http_server_request_duration_seconds
+  latency_threshold_seconds: 0.3
+  bad_status_regex: "5.."
+
+burn_rate_alerts:
+  - short_window: 5m
+    long_window: 1h
+    burn_rate: 14.4
+  - short_window: 30m
+    long_window: 6h
+    burn_rate: 6
+  - short_window: 2h
+    long_window: 24h
+    burn_rate: 3
+  - short_window: 6h
+    long_window: 3d
+    burn_rate: 1
+
+# Optional: service-specific panels, added below the standard SLO panels.
+dashboard:
+  extra_panels:
+    - title: Venue-capacity calls by outcome
+      description: Why availability checks fail. During an outage, circuit_open should dominate and real calls drop to almost nothing.
+      query: sum by (outcome) (rate(capacity_requests_total{job="bookings/availability-api"}[1m]))
+      legend: "{{outcome}}"
+      unit: reqps
+    - title: Circuit breaker state per pod
+      description: "Open: the pod is failing fast with 503 and protecting venue-capacity. Half-open: the next call will test whether venue-capacity is back; a pod with no traffic can stay half-open indefinitely, which is harmless."
+      type: state
+      query: max by (instance) (capacity_circuit_state{job="bookings/availability-api"})
+      legend: "{{instance}}"
+      states:
+        - { value: 0, text: closed, color: green }
+        - { value: 1, text: "half-open: next call is a trial", color: yellow }
+        - { value: 2, text: open, color: red }

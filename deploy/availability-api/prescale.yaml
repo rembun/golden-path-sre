@@ -1,0 +1,132 @@
+# Scheduled pre-scaling for the monthly booking launch (Thursday 09:00, ~1,000 req/s).
+# Raises the HPA's floor at 08:45 and lowers it again at 10:00. The HPA keeps scaling on
+# CPU on top of the floor. Runs every Thursday: cron can't say "first Thursday of the
+# month" (day-of-month and day-of-week are OR'd), and an extra hour of pods a week is cheap.
+# Floor values: the lab raises the floor to the HPA's ceiling (5, hpa.yaml), which is what the
+# single-node assessment VM can hold. Production values come from a peak test on representative
+# infrastructure: floor = ceil(peak req/s / per-pod req/s at p99 < 300 ms x 1.3 headroom), with the
+# HPA maximum above it (DECISIONS.md D33).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: availability-api-prescaler
+  namespace: bookings
+  labels: { app.kubernetes.io/name: availability-api-prescaler }
+---
+# Least privilege: read and patch this one HPA, nothing else.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: availability-api-prescaler
+  namespace: bookings
+rules:
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    resourceNames: [availability-api]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: availability-api-prescaler
+  namespace: bookings
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: availability-api-prescaler
+subjects:
+  - kind: ServiceAccount
+    name: availability-api-prescaler
+    namespace: bookings
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: availability-api-prescale-up
+  namespace: bookings
+  labels: { app.kubernetes.io/name: availability-api-prescaler }
+spec:
+  schedule: "45 8 * * 4"            # Thursdays 08:45: pods are ready well before 09:00
+  timeZone: Europe/London           # assumption: launch time is UK time (DECISIONS.md Q9)
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels: { app.kubernetes.io/name: availability-api-prescaler }
+        spec:
+          serviceAccountName: availability-api-prescaler
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: prescale
+              image: docker.io/library/python:3.12-slim
+              command: ["python", "/scripts/prescale_hpa.py"]
+              env:
+                - { name: HPA_NAME, value: availability-api }
+                - { name: MIN_REPLICAS, value: "5" }   # lab: the HPA ceiling; see the note at the top
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits: { memory: 64Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: script, mountPath: /scripts, readOnly: true }
+          volumes:
+            - name: script
+              configMap: { name: availability-api-prescale-script }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: availability-api-prescale-down
+  namespace: bookings
+  labels: { app.kubernetes.io/name: availability-api-prescaler }
+spec:
+  schedule: "0 10 * * 4"            # Thursdays 10:00: peak (~25 min) is long over
+  timeZone: Europe/London
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels: { app.kubernetes.io/name: availability-api-prescaler }
+        spec:
+          serviceAccountName: availability-api-prescaler
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: prescale
+              image: docker.io/library/python:3.12-slim
+              command: ["python", "/scripts/prescale_hpa.py"]
+              env:
+                - { name: HPA_NAME, value: availability-api }
+                - { name: MIN_REPLICAS, value: "3" }   # back to the normal floor (hpa.yaml)
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits: { memory: 64Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              volumeMounts:
+                - { name: script, mountPath: /scripts, readOnly: true }
+          volumes:
+            - name: script
+              configMap: { name: availability-api-prescale-script }

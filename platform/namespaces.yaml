@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    owner: platform
+---
+# The product team's namespace. In the golden path, a team owns its namespace
+# and everything in it: service, database, ServiceMonitors, SLO rules, dashboards.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bookings
+  labels:
+    owner: bookings-team

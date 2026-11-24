@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "golden-telemetry"
+version = "0.1.0"
+description = "Golden path telemetry for Python HTTP services: OpenTelemetry with the platform's naming, label and cost rules built in."
+requires-python = ">=3.11"
+dependencies = [
+  "opentelemetry-api==1.45.2",
+  "opentelemetry-sdk==1.45.2",
+  "opentelemetry-exporter-otlp-proto-http==1.45.2",
+  "opentelemetry-instrumentation-fastapi==0.66b2",
+  "opentelemetry-instrumentation-httpx==0.66b2",
+  "opentelemetry-instrumentation-psycopg==0.66b2",
+]
+
+[project.optional-dependencies]
+test = [
+  "fastapi==0.165.0",
+  "httpx==0.28.1",
+  "psycopg[binary]==3.3.9",
+]
+
+[tool.setuptools]
+packages = ["golden_telemetry"]

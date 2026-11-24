@@ -1,0 +1,16 @@
+# Prometheus scrapes service metrics from the collector's Prometheus exporter.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: otel-collector
+      app.kubernetes.io/name: opentelemetry-collector
+  endpoints:
+    - port: prom-exporter
+      interval: 15s
+      # Keep the service's own job/instance labels from the exporter, not the collector pod's.
+      honorLabels: true

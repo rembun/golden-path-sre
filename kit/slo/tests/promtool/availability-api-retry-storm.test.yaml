@@ -1,0 +1,49 @@
+# promtool unit test: replay a retry storm through the GENERATED rules and check
+# which alerts fire. Run with: make slo-verify
+#
+# Scenario (1-minute samples):
+#   0-60 min   steady 70 req/s, all fast and successful
+#   60-70 min  capacity outage: 30% of requests fail fast with 503
+# Expected: the fast-burn page (5m/1h windows, 14.4x) is NOT firing before the
+# storm and IS firing during it.
+rule_files:
+  - ../../../../out/availability-api-slo.rules.yaml
+
+evaluation_interval: 30s
+
+tests:
+  - interval: 1m
+    input_series:
+      # 70 req/s = 4,200 requests per minute.
+      - series: 'http_server_request_duration_seconds_count{job="bookings/availability-api",http_response_status_code="200"}'
+        values: '0+4200x60 252000+2940x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="bookings/availability-api",http_response_status_code="200",le="0.3"}'
+        values: '0+4200x60 252000+2940x10'
+      - series: 'http_server_request_duration_seconds_count{job="bookings/availability-api",http_response_status_code="503"}'
+        values: '0x60 0+1260x10'
+      - series: 'http_server_request_duration_seconds_bucket{job="bookings/availability-api",http_response_status_code="503",le="0.3"}'
+        values: '0x60 0+1260x10'
+
+    alert_rule_test:
+      - eval_time: 55m
+        alertname: AvailabilityApiSLOBurnRate5M
+        exp_alerts: []
+      - eval_time: 68m
+        alertname: AvailabilityApiSLOBurnRate5M
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: availability-api
+              slo: availability-availability
+            exp_annotations:
+              summary: availability-api SLO error budget burn is elevated
+              description: "Error budget burn rate is above 14.4x over both 5m and 1h windows. SLO target: 99.850%."
+              runbook_url: https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md
+
+    promql_expr_test:
+      # During the storm 30% of requests are bad: burn rate = 0.30 / 0.0015 = 200x.
+      - expr: round(slo:availability_api:burn_rate:rate5m)
+        eval_time: 68m
+        exp_samples:
+          - labels: '{}'
+            value: 200

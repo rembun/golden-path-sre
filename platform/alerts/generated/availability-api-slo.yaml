@@ -1,0 +1,122 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: availability-api-slo
+  namespace: bookings
+  labels:
+    release: kps
+spec:
+  groups:
+  - name: availability-api-slo-recording
+    interval: 30s
+    rules:
+    - record: slo:availability_api:requests:rate5m
+      expr: sum(rate(http_server_request_duration_seconds_count{job="bookings/availability-api"}[5m]))
+    - record: slo:availability_api:good_requests:rate5m
+      expr: sum(rate(http_server_request_duration_seconds_bucket{job="bookings/availability-api",le="0.3",http_response_status_code!~"5.."}[5m]))
+    - record: slo:availability_api:error_ratio:rate5m
+      expr: 1 - (slo:availability_api:good_requests:rate5m / slo:availability_api:requests:rate5m)
+    - record: slo:availability_api:burn_rate:rate5m
+      expr: slo:availability_api:error_ratio:rate5m / 0.0015
+    - record: slo:availability_api:requests:rate30m
+      expr: sum(rate(http_server_request_duration_seconds_count{job="bookings/availability-api"}[30m]))
+    - record: slo:availability_api:good_requests:rate30m
+      expr: sum(rate(http_server_request_duration_seconds_bucket{job="bookings/availability-api",le="0.3",http_response_status_code!~"5.."}[30m]))
+    - record: slo:availability_api:error_ratio:rate30m
+      expr: 1 - (slo:availability_api:good_requests:rate30m / slo:availability_api:requests:rate30m)
+    - record: slo:availability_api:burn_rate:rate30m
+      expr: slo:availability_api:error_ratio:rate30m / 0.0015
+    - record: slo:availability_api:requests:rate1h
+      expr: sum(rate(http_server_request_duration_seconds_count{job="bookings/availability-api"}[1h]))
+    - record: slo:availability_api:good_requests:rate1h
+      expr: sum(rate(http_server_request_duration_seconds_bucket{job="bookings/availability-api",le="0.3",http_response_status_code!~"5.."}[1h]))
+    - record: slo:availability_api:error_ratio:rate1h
+      expr: 1 - (slo:availability_api:good_requests:rate1h / slo:availability_api:requests:rate1h)
+    - record: slo:availability_api:burn_rate:rate1h
+      expr: slo:availability_api:error_ratio:rate1h / 0.0015
+    - record: slo:availability_api:requests:rate2h
+      expr: sum(rate(http_server_request_duration_seconds_count{job="bookings/availability-api"}[2h]))
+    - record: slo:availability_api:good_requests:rate2h
+      expr: sum(rate(http_server_request_duration_seconds_bucket{job="bookings/availability-api",le="0.3",http_response_status_code!~"5.."}[2h]))
+    - record: slo:availability_api:error_ratio:rate2h
+      expr: 1 - (slo:availability_api:good_requests:rate2h / slo:availability_api:requests:rate2h)
+    - record: slo:availability_api:burn_rate:rate2h
+      expr: slo:availability_api:error_ratio:rate2h / 0.0015
+    - record: slo:availability_api:requests:rate6h
+      expr: sum(rate(http_server_request_duration_seconds_count{job="bookings/availability-api"}[6h]))
+    - record: slo:availability_api:good_requests:rate6h
+      expr: sum(rate(http_server_request_duration_seconds_bucket{job="bookings/availability-api",le="0.3",http_response_status_code!~"5.."}[6h]))
+    - record: slo:availability_api:error_ratio:rate6h
+      expr: 1 - (slo:availability_api:good_requests:rate6h / slo:availability_api:requests:rate6h)
+    - record: slo:availability_api:burn_rate:rate6h
+      expr: slo:availability_api:error_ratio:rate6h / 0.0015
+  - name: availability-api-slo-recording-long
+    interval: 5m
+    rules:
+    - record: slo:availability_api:requests:rate24h
+      expr: sum(rate(http_server_request_duration_seconds_count{job="bookings/availability-api"}[24h]))
+    - record: slo:availability_api:good_requests:rate24h
+      expr: sum(rate(http_server_request_duration_seconds_bucket{job="bookings/availability-api",le="0.3",http_response_status_code!~"5.."}[24h]))
+    - record: slo:availability_api:error_ratio:rate24h
+      expr: 1 - (slo:availability_api:good_requests:rate24h / slo:availability_api:requests:rate24h)
+    - record: slo:availability_api:burn_rate:rate24h
+      expr: slo:availability_api:error_ratio:rate24h / 0.0015
+    - record: slo:availability_api:requests:rate3d
+      expr: sum(rate(http_server_request_duration_seconds_count{job="bookings/availability-api"}[3d]))
+    - record: slo:availability_api:good_requests:rate3d
+      expr: sum(rate(http_server_request_duration_seconds_bucket{job="bookings/availability-api",le="0.3",http_response_status_code!~"5.."}[3d]))
+    - record: slo:availability_api:error_ratio:rate3d
+      expr: 1 - (slo:availability_api:good_requests:rate3d / slo:availability_api:requests:rate3d)
+    - record: slo:availability_api:burn_rate:rate3d
+      expr: slo:availability_api:error_ratio:rate3d / 0.0015
+    - record: slo:availability_api:requests:rate30d
+      expr: sum(rate(http_server_request_duration_seconds_count{job="bookings/availability-api"}[30d]))
+    - record: slo:availability_api:good_requests:rate30d
+      expr: sum(rate(http_server_request_duration_seconds_bucket{job="bookings/availability-api",le="0.3",http_response_status_code!~"5.."}[30d]))
+    - record: slo:availability_api:error_ratio:rate30d
+      expr: 1 - (slo:availability_api:good_requests:rate30d / slo:availability_api:requests:rate30d)
+    - record: slo:availability_api:burn_rate:rate30d
+      expr: slo:availability_api:error_ratio:rate30d / 0.0015
+  - name: availability-api-slo-alerts
+    interval: 30s
+    rules:
+    - alert: AvailabilityApiSLOBurnRate5M
+      expr: (slo:availability_api:burn_rate:rate5m > 14.4) and (slo:availability_api:burn_rate:rate1h > 14.4)
+      labels:
+        severity: critical
+        service: availability-api
+        slo: availability-availability
+      annotations:
+        summary: availability-api SLO error budget burn is elevated
+        description: 'Error budget burn rate is above 14.4x over both 5m and 1h windows. SLO target: 99.850%.'
+        runbook_url: https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md
+    - alert: AvailabilityApiSLOBurnRate30M
+      expr: (slo:availability_api:burn_rate:rate30m > 6) and (slo:availability_api:burn_rate:rate6h > 6)
+      labels:
+        severity: critical
+        service: availability-api
+        slo: availability-availability
+      annotations:
+        summary: availability-api SLO error budget burn is elevated
+        description: 'Error budget burn rate is above 6x over both 30m and 6h windows. SLO target: 99.850%.'
+        runbook_url: https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md
+    - alert: AvailabilityApiSLOBurnRate2H
+      expr: (slo:availability_api:burn_rate:rate2h > 3) and (slo:availability_api:burn_rate:rate24h > 3)
+      labels:
+        severity: warning
+        service: availability-api
+        slo: availability-availability
+      annotations:
+        summary: availability-api SLO error budget burn is elevated
+        description: 'Error budget burn rate is above 3x over both 2h and 24h windows. SLO target: 99.850%.'
+        runbook_url: https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md
+    - alert: AvailabilityApiSLOBurnRate6H
+      expr: (slo:availability_api:burn_rate:rate6h > 1) and (slo:availability_api:burn_rate:rate3d > 1)
+      labels:
+        severity: warning
+        service: availability-api
+        slo: availability-availability
+      annotations:
+        summary: availability-api SLO error budget burn is elevated
+        description: 'Error budget burn rate is above 1x over both 6h and 3d windows. SLO target: 99.850%.'
+        runbook_url: https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md

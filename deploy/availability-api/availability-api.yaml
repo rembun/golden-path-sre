@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: availability-api
+  namespace: bookings
+  labels:
+    app.kubernetes.io/name: availability-api
+    app.kubernetes.io/part-of: bookings
+spec:
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0          # never drop below desired capacity during a rollout
+  selector:
+    matchLabels: { app.kubernetes.io/name: availability-api }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: availability-api
+        app.kubernetes.io/part-of: bookings
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: availability-api }
+      containers:
+        - name: api
+          image: availability-api:local
+          imagePullPolicy: Never   # imported into k3d by `make build`
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - { name: CAPACITY_URL, value: "http://venue-capacity-fake:8081" }
+            - { name: CAPACITY_TIMEOUT_S, value: "0.15" }
+            - { name: DB_POOL_SIZE, value: "10" }
+            - { name: LOG_LEVEL, value: WARNING }
+            # Telemetry: standard OpenTelemetry variables, per the telemetry standard.
+            - { name: OTEL_SERVICE_NAME, value: availability-api }
+            # The pod name becomes the "instance" label, so dashboards and alerts say which pod
+            # (and `kubectl logs <instance>` works) instead of a random id per process.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "service.namespace=bookings,deployment.environment.name=local,service.instance.id=$(POD_NAME),k8s.pod.name=$(POD_NAME)" }
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc:4318" }
+            - { name: OTEL_TRACES_SAMPLER_ARG, value: "0.1" }
+          envFrom:
+            - secretRef: { name: availability-api }   # DATABASE_URL, CAPACITY_TOKEN
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            # Give the endpoints controller time to remove this pod from the
+            # Service before Uvicorn stops accepting connections.
+            preStop:
+              exec: { command: ["sleep", "5"] }
+          # CPU request but no CPU limit: limits cause throttling, which shows up as
+          # latency, the thing our SLO measures. Memory is limited (it is not compressible).
+          resources:
+            requests: { cpu: 250m, memory: 128Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: availability-api
+  namespace: bookings
+  labels: { app.kubernetes.io/name: availability-api }
+spec:
+  selector: { app.kubernetes.io/name: availability-api }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Voluntary disruptions (node drains, upgrades) never take us below 2 pods.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: availability-api
+  namespace: bookings
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: availability-api }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: availability-api
+  namespace: bookings
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: api.sre.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: availability-api
+                port: { name: http }

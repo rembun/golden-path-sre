@@ -1,0 +1,22 @@
+# Local secrets: never commit
+.env
+*.env
+!*.env.example
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Generated
+/out/
+
+# Local environment files
+.env.*
+!.env.example
+*.egg-info/
+
+# Python package build output
+build/
+dist/

@@ -1,0 +1,17 @@
+# Local cluster: k3s (pinned) running in Docker via k3d.
+# One server + two agents, so topology spread and PodDisruptionBudgets behave
+# like they would on a real multi-node cluster.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: golden-path
+servers: 1
+agents: 2
+image: rancher/k3s:v1.37.2-k3s1
+ports:
+  # Traefik (bundled with k3s) behind the k3d load balancer:
+  #   http://api.sre.test:8080      -> availability API  (add to /etc/hosts, see README)
+  #   http://grafana.sre.test:8080  -> Grafana
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer

@@ -1,0 +1,41 @@
+# promtool unit test for the cause-based circuit-breaker alert. Run with: make slo-verify
+#
+# The alert watches requests REFUSED by the breaker (capacity_requests_total{outcome="circuit_open"}),
+# not the breaker's state, because the state misleads both ways:
+#   - during an outage it flaps open <-> half-open every few seconds
+#   - on an idle pod it can sit in half-open for hours with nothing wrong
+# Samples every 15 s. ~30 refused requests/s = 450 per sample.
+rule_files:
+  - ../../../../out/availability-api-alerts.rules.yaml
+
+evaluation_interval: 15s
+
+tests:
+  - interval: 15s
+    input_series:
+      # pod-a: normal for 2 min, then a 4-minute outage (breaker refusing requests throughout)
+      - series: 'capacity_requests_total{instance="pod-a", outcome="circuit_open"}'
+        values: '0x8 450+450x16'
+      # pod-b: one 30-second blip, then fine
+      - series: 'capacity_requests_total{instance="pod-b", outcome="circuit_open"}'
+        values: '0x8 450 900 900x14'
+      # pod-c: idle after an outage. Breaker state stays half-open (1), nothing is refused.
+      - series: 'capacity_requests_total{instance="pod-c", outcome="circuit_open"}'
+        values: '900x24'
+      - series: 'capacity_circuit_state{instance="pod-c"}'
+        values: '1x24'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: AvailabilityDependencyCircuitOpen
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: AvailabilityDependencyCircuitOpen
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: availability-api
+              instance: pod-a
+            exp_annotations:
+              summary: "Availability API circuit breaker is open"
+              description: "The circuit breaker on pod-a has been refusing requests for over a minute: the API is answering 503 instead of calling venue-capacity."
+              runbook_url: "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md"

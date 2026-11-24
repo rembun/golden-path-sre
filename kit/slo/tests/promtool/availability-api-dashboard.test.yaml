@@ -1,0 +1,27 @@
+# promtool test for the dashboard's "no traffic shows 0" burn-rate expression.
+# Run with: make slo-verify
+#
+# Grafana runs range queries, so the expression must return the SAME label set when busy
+# and when idle; otherwise each panel line is drawn twice (once per label set).
+rule_files:
+  - ../../../../out/availability-api-slo.rules.yaml
+
+evaluation_interval: 30s
+
+tests:
+  - interval: 1m
+    input_series:
+      # 60 minutes of traffic with 1% bad requests, then traffic stops
+      - series: 'http_server_request_duration_seconds_count{job="bookings/availability-api",http_response_status_code="200"}'
+        values: '0+4200x60 252000x40'
+      - series: 'http_server_request_duration_seconds_bucket{job="bookings/availability-api",http_response_status_code="200",le="0.3"}'
+        values: '0+4158x60 249480x40'
+    promql_expr_test:
+      # busy: 1% bad / 0.15% budget = 6.67x
+      - expr: round(sum(slo:availability_api:burn_rate:rate5m >= 0) or vector(0), 0.01)
+        eval_time: 50m
+        exp_samples: [{ labels: '{}', value: 6.67 }]
+      # idle: 0/0 is NaN; shown as 0, with the same empty label set
+      - expr: sum(slo:availability_api:burn_rate:rate5m >= 0) or vector(0)
+        eval_time: 95m
+        exp_samples: [{ labels: '{}', value: 0 }]

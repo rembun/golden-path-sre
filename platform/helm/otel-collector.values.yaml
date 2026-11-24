@@ -1,0 +1,95 @@
+# OpenTelemetry Collector 0.178.2 (contrib image, for the transform processor).
+# The single front door for telemetry: services send OTLP here, and the platform's
+# cost controls are applied here, once, instead of in every service.
+mode: deployment
+fullnameOverride: otel-collector
+image:
+  repository: otel/opentelemetry-collector-contrib
+replicaCount: 1
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { memory: 512Mi }
+
+ports:
+  # Only OTLP in, Prometheus exporter out.
+  jaeger-compact: { enabled: false }
+  jaeger-thrift: { enabled: false }
+  jaeger-grpc: { enabled: false }
+  zipkin: { enabled: false }
+  prom-exporter:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+
+# Full config, not merged with chart defaults, so what runs is exactly what is here.
+alternateConfig:
+  extensions:
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: ${env:MY_POD_IP}:4317
+        http:
+          endpoint: ${env:MY_POD_IP}:4318
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    # COST guardrail, second line of defence after the SDK views: strip attributes
+    # that must never become metric labels, even if a service forgets the kit.
+    transform/cardinality:
+      metric_statements:
+        - context: datapoint
+          statements:
+            - delete_key(attributes, "url.full")
+            - delete_key(attributes, "url.path")
+            - delete_key(attributes, "url.query")
+            - delete_key(attributes, "user.id")
+            - delete_key(attributes, "client.address")
+            - delete_key(attributes, "net.peer.port")
+            - delete_key(attributes, "server.port")
+    # COST: drop span attributes that are large or may hold personal data.
+    transform/spans:
+      trace_statements:
+        - context: span
+          statements:
+            - delete_key(attributes, "url.query")
+            - delete_key(attributes, "http.request.header.authorization")
+    batch:
+      send_batch_size: 1024
+      timeout: 5s
+  exporters:
+    prometheus:
+      endpoint: 0.0.0.0:8889
+      # Exemplars (trace ids on histogram buckets) need OpenMetrics format.
+      enable_open_metrics: true
+      # Series not updated for 5 minutes are dropped, so pods that went away
+      # don't leave stale series behind.
+      metric_expiration: 5m
+    otlp/tempo:
+      endpoint: tempo.observability.svc:4317
+      tls:
+        insecure: true
+  service:
+    extensions: [health_check]
+    telemetry:
+      metrics:
+        readers:
+          - pull:
+              exporter:
+                prometheus:
+                  host: ${env:MY_POD_IP}
+                  port: 8888
+    pipelines:
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, transform/cardinality, batch]
+        exporters: [prometheus]
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, transform/spans, batch]
+        exporters: [otlp/tempo]

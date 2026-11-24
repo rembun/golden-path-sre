@@ -1,0 +1,43 @@
+# Cause-based alerts for the availability API. These explain WHY the SLO is
+# burning; they do not page on their own. Paging is done by the SLO burn-rate
+# alerts (kit/slo), which measure what customers actually experience.
+# Severity "warning" = shown in Alertmanager/Grafana and routed to the team
+# channel, not to the pager. Two pages for one incident teach people to ignore pages.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: availability-api-alerts
+  namespace: bookings          # owned by the product team, next to the SLO rules
+  labels:
+    release: kps
+spec:
+  groups:
+    - name: availability-api
+      interval: 30s
+      rules:
+        # Alert on what the breaker DOES (refuse customer requests), not on its state.
+        # State alone misleads both ways: during an outage it flaps open <-> half-open, and
+        # on an idle pod it can sit in half-open indefinitely with nothing wrong.
+        # Fires after the breaker has been refusing requests for roughly a minute or more;
+        # a 30-second blip doesn't fire. Tested in kit/slo/tests/promtool (DECISIONS.md D29).
+        - alert: AvailabilityDependencyCircuitOpen
+          expr: sum by (instance) (rate(capacity_requests_total{outcome="circuit_open"}[1m])) > 0
+          for: 2m
+          labels:
+            severity: warning
+            service: availability-api
+          annotations:
+            summary: "Availability API circuit breaker is open"
+            description: "The circuit breaker on {{ $labels.instance }} has been refusing requests for over a minute: the API is answering 503 instead of calling venue-capacity."
+            runbook_url: "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md"
+
+        - alert: AvailabilityDependencyTimeouts
+          expr: sum(rate(capacity_requests_total{outcome="timeout"}[5m])) > 0
+          for: 2m
+          labels:
+            severity: warning
+            service: availability-api
+          annotations:
+            summary: "Availability API dependency timeouts detected"
+            description: "Calls to venue-capacity are timing out. Check the dependency's latency and health."
+            runbook_url: "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md"
