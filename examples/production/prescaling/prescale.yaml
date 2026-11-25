@@ -1,11 +1,10 @@
-# Scheduled pre-scaling for the monthly booking launch (Thursday 09:00, ~1,000 req/s).
-# Raises the HPA's floor at 08:45 and lowers it again at 10:00. The HPA keeps scaling on
-# CPU on top of the floor. Runs every Thursday: cron can't say "first Thursday of the
-# month" (day-of-month and day-of-week are OR'd), and an extra hour of pods a week is cheap.
-# Floor values: the lab raises the floor to the HPA's ceiling (5, hpa.yaml), which is what the
-# single-node assessment VM can hold. Production values come from a peak test on representative
-# infrastructure: floor = ceil(peak req/s / per-pod req/s at p99 < 300 ms x 1.3 headroom), with the
-# HPA maximum above it (DECISIONS.md D33).
+# OPTIONAL PRODUCTION REFERENCE ONLY.
+# This manifest is not applied by the Golden Path assessment Makefile.
+# The example schedules are illustrative: raise the HPA minimum to 5 on Thursdays
+# at 08:45 and restore it to 3 at 10:00, using Europe/London.
+# Validate historical demand, per-pod capacity, startup/readiness time, cluster
+# resources, database limits, and the business timezone before production use.
+# Replica floors and schedules must be measured and justified; idle capacity has a cost.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -71,7 +70,7 @@ spec:
               command: ["python", "/scripts/prescale_hpa.py"]
               env:
                 - { name: HPA_NAME, value: availability-api }
-                - { name: MIN_REPLICAS, value: "5" }   # lab: the HPA ceiling; see the note at the top
+                - { name: MIN_REPLICAS, value: "5" }   # illustrative only; validate against the target HPA maximum
               resources:
                 requests: { cpu: 10m, memory: 32Mi }
                 limits: { memory: 64Mi }

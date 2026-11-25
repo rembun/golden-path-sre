@@ -156,9 +156,10 @@ maintained in `grafana-community/helm-charts`; we use the maintained one.
 
 ### D16. Local secrets are generated, never committed
 
-`scripts/bootstrap-secrets.sh` generates random passwords and tokens once into `.env.local`
-(git-ignored) and creates Kubernetes Secrets from it. In Azure these would come from Key
-Vault via the Secrets Store CSI driver or workload identity.
+`scripts/bootstrap-secrets.sh` generates missing or empty passwords and tokens in `.env.local`
+(git-ignored), preserves existing non-empty values, and creates or updates Kubernetes Secrets
+from it. In Azure these would come from Key Vault via the Secrets Store CSI driver or workload
+identity.
 
 ### D17. k3s control-plane scrape targets are disabled
 
@@ -338,31 +339,35 @@ The maximum of 5 is a conservative initial ceiling for the single-node assessmen
 not a demonstrated capacity guarantee. The constrained peak-profile test observed HPA
 scale-up and scale-down, but the application did not meet its SLO and peak capacity was
 not validated. CPU-based scaling is reactive and will not necessarily detect latency or
-dependency saturation when CPU remains low. Scheduled pre-scaling ahead of the known
-Thursday 09:00 peak is added in D33.
+dependency saturation when CPU remains low. Scheduled pre-scaling is considered as an optional production optimisation in D33, not part of the assessment baseline.
 
-### D33. Scheduled pre-scaling before the Thursday 09:00 launch
+### D33. Scheduled pre-scaling is an optional production optimisation
 
-Bookings open at a known time, and traffic rises about 14× within a minute. A CPU-based HPA
-reacts only after CPU (and latency) has risen, which the storm run showed: two pods were added
-*during* the incident. So two CronJobs raise the HPA's floor at 08:45 every Thursday (UK time)
-and lower it at 10:00. The HPA stays in charge, and can still scale above the floor.
+A scheduled increase in the HPA minimum replica count can make capacity available
+before a predictable demand peak. However, it reserves resources even when the
+expected traffic does not arrive. Those idle replicas create unnecessary compute
+and database-connection overhead until the scale-down action runs.
 
-- **The floor, not the replica count, is changed.** Setting `replicas` directly would fight the
-  HPA; raising `minReplicas` cooperates with it.
-- **Every Thursday, not just launch Thursdays.** Cron can't express "first Thursday of the month"
-  (day-of-month and day-of-week are OR'd, so `1-7 * 4` would also fire every day from the 1st to
-  the 7th), and an extra hour of pods once a week is cheap insurance.
-- **Least privilege:** the CronJobs' service account can `get` and `patch` this one HPA, nothing
-  else. The script uses the same Python base image as the service, so no new image needs vetting.
-- **Lab vs production values.** In the lab, the floor rises to the HPA ceiling of 5 (D32), which the
-  single-node VM can hold. For production: floor = ceil(peak req/s ÷ per-pod req/s at p99 < 300 ms ×
-  1.3 headroom), measured on representative infrastructure, with the HPA maximum above it and the
-  database connection limit checked (pods × `DB_POOL_SIZE` < `max_connections`).
-- **Tested** against a fake Kubernetes API: the exact merge-patch request is sent with the pod's
-  token, and an RBAC denial exits non-zero, so the CronJob records a failure (kube-prometheus-stack's
-  default `KubeJobFailed` alert then fires). Try it any time with `make prescale-up` /
-  `make prescale-down`.
+**Assessment decision:** the HPA is the autoscaling mechanism demonstrated by this
+assessment. Scheduled pre-scaling is not a required assessment feature and is not
+used as evidence that production capacity has been validated.
+
+**Production consideration:** introduce scheduled pre-scaling only when historical
+traffic demonstrates a sufficiently predictable demand pattern and the reliability
+benefit justifies the cost of temporarily idle replicas. Before enabling it:
+
+- Measure representative peak demand and per-pod capacity at the required latency.
+- Account for pod startup time, readiness and database connection limits.
+- Set the temporary minimum replica count using measured demand and an explicit
+  headroom allowance.
+- Define a scale-down time that avoids keeping unnecessary capacity running.
+- Review whether event-driven or predictive scaling using a reliable leading
+  indicator would respond more efficiently than a fixed schedule.
+
+The HPA should remain responsible for ongoing reactive scaling. Any production
+pre-scaling floor must be validated against real infrastructure and reviewed
+alongside its cost. A scheduled replica floor is not a substitute for capacity
+testing or a production capacity guarantee.
 
 ### D34. The reusable pipeline brings its own kit
 
@@ -419,7 +424,7 @@ tracing path. Tempo's Jaeger receivers remain enabled but unused, and are a clea
 | Telemetry kit (phase 2) | OpenTelemetry with cost controls | `golden_telemetry` package, collector config, telemetry standard | It noticed OpenTelemetry's default HTTP buckets don't include 0.3 s, so the SLO couldn't be computed exactly, and added explicit buckets with a test. The telemetry test suite passes all 5 tests |
 | Telemetry kit | — | First version registered the breaker gauge once per app instance | Its own test failed (duplicate instruments ignored); fixed to register once per process |
 | Platform | Pinned Helm charts | Reviewed chart versions and upgrade changes; normally prefer releases at least 14 days old | Found the Tempo chart had moved to `grafana-community`; used the maintained one. The kube-prometheus-stack 93.9.0 upgrade was a documented exception, checked with a Helm server-side dry run before deployment |
-| Load, pipeline, runbook (this review) | Fill the gaps against the brief | k6 script, reusable pipeline, policy gate, promtool storm test, runbook template and filled runbook, these docs | The policy gate caught missing resource settings on the seed Job and an unsuitable fake liveness probe. The k6 storm summary and Grafana dashboard/Alertmanager overview screenshots are committed under `docs/evidence/`; the named firing Alertmanager alert screenshot is included in `docs/evidence/grafana-picture/` |
+| Load, pipeline, runbook (this review) | Fill the gaps against the brief | k6 script, reusable pipeline, policy gate, promtool storm test, runbook template and filled runbook, these docs | The policy gate caught missing resource settings on the seed Job and an unsuitable fake liveness probe. The k6 storm summary and Grafana dashboard/Alertmanager overview screenshots are committed under `docs/evidence/`; the Alertmanager overview screenshot is included in `docs/evidence/picture/` |
 | Runbook | — | — | Caught during review: the committed runbook was the shell script that should have generated it, cut off after 45 lines. Rewritten |
 | Storm-run review | Review my storm-run dashboard screenshots and fix what's wrong | Outcome-based breaker alert, pod-name instance labels, whole-call deadline, dashboard fixes (burn rate 0 instead of blank with no traffic, dashed threshold lines, red 5xx) | The previous AI-written alert fix (D29 version 2) was wrong: it fired forever on an idle pod. Spotted on my own dashboard (a pod in half-open for 15 minutes), confirmed with promtool, replaced |
 | Dashboard | A dashboard for the service, generated from the SLO spec | Generator, tests, live verification against a real Prometheus | The live run exposed a bug in an earlier AI-written cause alert (D29): it could never fire during an outage. Fixed and covered by a promtool test |
@@ -441,8 +446,8 @@ order-of-magnitude, verified against the Azure pricing calculator before relying
 | Q5 | Can a customer hold more than one slot at once? | Yes; no per-customer limit in this version. |
 | Q6 | Do the website and app honour `Retry-After`, and how do they retry? | They retry immediately up to twice (as in the storm scenario). Backoff with jitter is the real fix (runbook, "Fix"). |
 | Q7 | Who owns venue-capacity, and what's its SLO? | Another team; no published SLO. Our SLO can't be better than our hard dependencies allow. |
-| Q8 | Is ~1,000 req/s for ~25 minutes the right peak forecast, and is it always Thursday 09:00? | Yes, monthly. Pre-scaling should be scheduled for it (section 8). |
-| Q9 | Which time zone is "Thursday 09:00" in? | UK time (`Europe/London`), used by the pre-scaling CronJobs. |
+| Q8 | Is ~1,000 req/s for ~25 minutes the right peak forecast, and is it always Thursday 09:00? | Yes, monthly. Validate the forecast; consider pre-scaling only if predictable demand and the reliability benefit justify the cost (D33). |
+| Q9 | Which time zone defines the expected Thursday 09:00 peak? | The current illustrative scenario uses UK time (`Europe/London`); production scheduling must use the business's agreed time zone and validated demand pattern. |
 
 ---
 
@@ -526,16 +531,16 @@ diagnostic settings sending logs to the shared workspace.
 **Verification status**
 - The service, kit and alert logic are tested: service tests against real PostgreSQL, telemetry kit
   rules, SLO generator, policy gate, and a promtool test that replays the retry storm.
-- The pipeline workflows pass `actionlint`. All third-party GitHub Actions are pinned to full commit SHAs, with release-version comments. GitHub Actions passed for commit `7f68bff`: https://github.com/rembun/golden-path-sre/actions/runs/45504172333.
+- The pipeline workflows pass `actionlint`. All third-party GitHub Actions are pinned to full commit SHAs, with release-version comments. GitHub Actions passed for commit `60a77d4`: https://github.com/rembun/golden-path-sre/actions/runs/45610821849.
 - `make up RUNTIME=k3s` was validated on the existing k3s cluster. The default k3d path remains unverified: k3d is not installed on the assessment host. The configuration and dry-run were reviewed; no separate cluster was created.
 
 **Gaps**
-- **Autoscaling and scheduled pre-scaling are implemented (D32, D33); production sizing is not.**
+- **HPA autoscaling is implemented and verified (D32); production sizing is not.**
   The availability API HPA targets 70% CPU utilisation, with a minimum of three and maximum of
-  five replicas, and the Thursday CronJobs raise the floor to five.
-  Metrics Server was verified, and the HPA scaled the deployment from three to five replicas
-  during load, then back to three as CPU utilisation fell. This demonstrates the HPA scaling
-  path, not production capacity.
+  five replicas. Metrics Server was verified, and the HPA scaled the deployment from three to
+  five replicas during load, then back to three as CPU utilisation fell. This demonstrates
+  the HPA scaling path, not production capacity. Scheduled pre-scaling is an optional
+  production optimisation (D33), not an assessment requirement.
 - **Constrained-environment peak test did not meet the SLO.** A peak-profile run using
   `RATE_SCALE=0.1` and a two-minute peak generated 22,095 requests at approximately 52.6 req/s
   average. The good-request ratio was 11.55%; 88.19% of requests resulted in HTTP failures.
@@ -546,8 +551,8 @@ diagnostic settings sending logs to the shared workspace.
   observability components were observed during the run. These findings indicate cluster-wide
   resource contention; they do not establish a production service capacity limit or prove OOM.
 - **Follow-up:** repeat representative peak testing on adequately sized multi-node infrastructure
-  before making production capacity commitments, then set the pre-scaling floor and HPA ceiling
-  from it (D33).
+  before making production capacity commitments, then set the HPA ceiling from measured
+  capacity and consider a pre-scaling floor only if justified by D33.
 - **`retentionSize: 4GB` can silently shorten the 30-day SLO window** if data grows past it. Fine
   at local volumes; in Azure, Managed Prometheus retention removes the issue.
 - **A p99 latency spike to ~2.5 s at the start of a storm run**, far beyond the capacity timeout.
@@ -576,8 +581,8 @@ verified; peak capacity was not validated in the constrained assessment environm
 ## 8. One more sprint
 
 1. **Size for the peak:** repeat the peak load test on adequately sized infrastructure to
-   establish a defensible per-pod capacity, then set the pre-scaling floor and HPA ceiling (D33)
-   from it.
+   establish defensible per-pod capacity and set the HPA ceiling; consider a production
+   pre-scaling floor only if its reliability benefit justifies the idle-capacity cost (D33).
 2. **Error-budget policy in the pipeline:** the deploy stage queries the remaining budget and blocks
    feature deploys when it's gone (with an override label for fixes).
 3. **Tail-based sampling** in the collector: keep every error and every slow request, sample the

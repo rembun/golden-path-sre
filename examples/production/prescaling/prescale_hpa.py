@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Set an HPA's minReplicas, from inside the cluster. Used by the pre-scaling CronJobs.
+"""Optionally adjust an HPA's minReplicas from inside the cluster.
 
-Why pre-scale: bookings open at a known time (Thursday 09:00) and traffic jumps ~14x in
-about a minute. An HPA reacts only after CPU has risen, so new pods arrive after latency
-already has. Raising the HPA's floor beforehand means the capacity is there at 09:00; the
-HPA still scales above the floor if needed, and the floor drops back afterwards.
+This helper is used by the optional production pre-scaling example. A scheduled
+replica floor may help with a measured, predictable demand peak, but it does not
+guarantee capacity or replace representative load testing.
 
 Env: HPA_NAME, MIN_REPLICAS. Uses the pod's service account (RBAC: patch that one HPA).
 KUBERNETES_API and SA_DIR can be overridden for testing.

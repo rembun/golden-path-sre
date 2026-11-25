@@ -118,4 +118,4 @@ its SLO under storm conditions or validate peak production capacity.
 
 Raw output: [k6-storm-summary.txt](evidence/k6-storm-summary.txt).
 
-Grafana screenshots are stored in [evidence/grafana-picture/](evidence/grafana-picture/).
+Screenshots and supporting evidence are stored in [evidence/picture/](evidence/picture/).

@@ -7,10 +7,10 @@ Built in phases so each one worked on its own and could be reviewed before the n
 | 1 | Availability API, fake venue-capacity service, tests, Dockerfiles | ✅ Done |
 | 2 | k3s (k3d or existing k3s), Postgres, deployment, kube-prometheus-stack, OTel Collector, Tempo, telemetry kit | ✅ Done |
 | 3 | SLO as code: spec → recording rules, burn-rate alerts and a Grafana dashboard; cause alerts; promtool incident tests | ✅ Done |
-| 4 | k6 load script (steady, peak, storm), runbook template, filled-in runbook, retry-storm exercise | ✅ Dashboard, Alertmanager overview and named firing-alert screenshots captured under `docs/evidence/grafana-picture/` |
+| 4 | k6 load script (steady, peak, storm), runbook template, filled-in runbook, retry-storm exercise | ✅ Dashboard, Alertmanager overview and named firing-alert screenshots captured under `docs/evidence/picture/` |
 | 5 | Pipeline template: reusable GitHub Actions workflow, policy gate, scan, ephemeral deploy | ✅ Done; green GitHub Actions run confirmed |
 | 6 | README for product teams; DECISIONS.md | ✅ Documentation updated; authorship and AI assistance disclosed |
-| 7 | Availability API autoscaling: HPA, CPU target, scale behavior and runtime verification | ✅ HPA scale-up/down observed; constrained-environment peak test documented; scheduled pre-scaling and production capacity validation remain outstanding |
+| 7 | Availability API autoscaling: HPA, CPU target, scale behavior and runtime verification | ✅ HPA scale-up/down observed; constrained-environment peak test documented; scheduled pre-scaling is an optional production optimisation, not an assessment requirement |
 
 ## Before submission (deadline: Wednesday 2 December 2026, 17:00)
 
@@ -22,7 +22,7 @@ Built in phases so each one worked on its own and could be reviewed before the n
 - [x] Configure and verify the availability API HPA on k3s (3–5 replicas, 70% CPU target)
 - [x] Observe HPA scale-up from three to five replicas and scale-down to three during the constrained load test
 - [x] Document the constrained-environment peak-test outcome and its limitations
-- [x] Document scheduled pre-scaling before the known Thursday 09:00 peak as a follow-up
+- [x] Document scheduled pre-scaling as an optional production optimisation, subject to demand evidence and cost justification
 - [ ] Validate peak capacity and node headroom on adequately sized infrastructure
 - [x] Run `make load SCENARIO=storm`; save the k6 summary as `docs/evidence/k6-storm-summary.txt`
 - [x] Save Grafana dashboard and Alertmanager overview screenshots to `docs/evidence/`

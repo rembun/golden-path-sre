@@ -13,7 +13,7 @@ KPS_VERSION   := 93.9.0
 TEMPO_VERSION := 3.2.1
 OTEL_VERSION  := 0.178.2
 
-.PHONY: up cluster namespaces secrets platform build deploy alerts dashboards status test chaos load prescale-up prescale-down grafana-password down
+.PHONY: up cluster namespaces secrets platform build deploy alerts dashboards status test chaos load grafana-password down
 
 up: cluster secrets platform build deploy alerts dashboards status
 
@@ -62,6 +62,7 @@ else
 endif
 
 deploy:
+	kubectl -n $(NS_APP) delete cronjob/availability-api-prescale-up cronjob/availability-api-prescale-down serviceaccount/availability-api-prescaler role/availability-api-prescaler rolebinding/availability-api-prescaler configmap/availability-api-prescale-script --ignore-not-found
 	kubectl apply -f deploy/postgres/
 	kubectl -n $(NS_APP) rollout status statefulset/postgres --timeout=180s
 	kubectl -n $(NS_APP) delete job availability-api-seed --ignore-not-found
@@ -69,9 +70,6 @@ deploy:
 	kubectl -n $(NS_APP) wait --for=condition=complete job/availability-api-seed --timeout=180s
 	kubectl apply -f deploy/venue-capacity-fake/ -f deploy/availability-api/availability-api.yaml
 	kubectl apply -f deploy/availability-api/hpa.yaml
-	kubectl -n $(NS_APP) create configmap availability-api-prescale-script \
-	  --from-file=scripts/prescale_hpa.py --dry-run=client -o yaml | kubectl apply -f -
-	kubectl apply -f deploy/availability-api/prescale.yaml
 	kubectl -n $(NS_APP) rollout restart deployment/availability-api deployment/venue-capacity-fake
 	kubectl -n $(NS_APP) rollout status deployment/venue-capacity-fake --timeout=180s
 	kubectl -n $(NS_APP) rollout status deployment/availability-api --timeout=180s
@@ -124,10 +122,6 @@ load:
 	@echo "Following k6 output (Ctrl+C stops following; the test keeps running):"
 	kubectl -n $(NS_APP) logs -f job/k6-load
 
-# Try the pre-scaling now instead of waiting for Thursday:  make prescale-up / make prescale-down
-prescale-up prescale-down:
-	kubectl -n $(NS_APP) create job --from=cronjob/availability-api-$@ $@-$$(date +%s)
-	@sleep 8; kubectl -n $(NS_APP) get hpa availability-api
 
 grafana-password:
 	@grep GRAFANA_ADMIN_PASSWORD .env.local | cut -d= -f2
