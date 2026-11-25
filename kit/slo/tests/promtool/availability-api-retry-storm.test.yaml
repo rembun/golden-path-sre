@@ -47,3 +47,14 @@ tests:
         exp_samples:
           - labels: '{}'
             value: 200
+
+      # The dashboard's alert panels read Prometheus's own ALERTS series. Same storm, same
+      # moments: nothing before the outage; the fast-burn page listed by name during it.
+      - expr: max by (alertname) (ALERTS{service="availability-api", alertstate="firing"})
+        eval_time: 55m
+        exp_samples: []
+      - expr: max by (alertname) (ALERTS{service="availability-api", alertstate="firing", alertname="AvailabilityApiSLOBurnRate5M"})
+        eval_time: 68m
+        exp_samples:
+          - labels: '{alertname="AvailabilityApiSLOBurnRate5M"}'
+            value: 1

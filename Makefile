@@ -13,7 +13,7 @@ KPS_VERSION   := 93.9.0
 TEMPO_VERSION := 3.2.1
 OTEL_VERSION  := 0.178.2
 
-.PHONY: up cluster namespaces secrets platform build deploy alerts dashboards status test chaos load grafana-password down
+.PHONY: up cluster namespaces secrets platform build deploy alerts dashboards status test chaos load evidence grafana-password down
 
 up: cluster secrets platform build deploy alerts dashboards status
 
@@ -122,6 +122,11 @@ load:
 	@echo "Following k6 output (Ctrl+C stops following; the test keeps running):"
 	kubectl -n $(NS_APP) logs -f job/k6-load
 
+
+# Wait for the burn-rate page during a storm and save Prometheus/Alertmanager alert state to
+# docs/evidence/. Run alongside: make load SCENARIO=storm
+evidence:
+	./scripts/capture-alert-evidence.sh
 
 grafana-password:
 	@grep GRAFANA_ADMIN_PASSWORD .env.local | cut -d= -f2

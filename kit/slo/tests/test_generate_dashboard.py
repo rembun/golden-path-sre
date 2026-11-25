@@ -64,12 +64,12 @@ class DashboardTests(unittest.TestCase):
     def test_extra_panels_from_spec_are_added(self):
         titles = [p["title"] for p in self.panels]
         self.assertIn("Venue-capacity calls by outcome", titles)
-        breaker = next(p for p in self.panels if p["type"] == "state-timeline")
+        breaker = next(p for p in self.panels if p["title"] == "Circuit breaker state per pod")
         mapping = breaker["fieldConfig"]["defaults"]["mappings"][0]["options"]
         self.assertEqual({v["text"].split(":")[0] for v in mapping.values()}, {"closed", "half-open", "open"})
 
     def test_state_timeline_does_not_colour_by_thresholds(self):
-        breaker = next(p for p in self.panels if p["type"] == "state-timeline")
+        breaker = next(p for p in self.panels if p["title"] == "Circuit breaker state per pod")
         self.assertNotEqual(breaker["fieldConfig"]["defaults"]["color"]["mode"], "thresholds")
 
     def test_burn_rate_shows_zero_not_blank_without_traffic(self):
@@ -87,6 +87,24 @@ class DashboardTests(unittest.TestCase):
         panel = next(p for p in self.panels if p["title"] == "Requests per second by status")
         colours = {o["matcher"]["options"]: o["properties"][0]["value"]["fixedColor"] for o in panel["fieldConfig"]["overrides"]}
         self.assertEqual(colours["^5..$"], "red")
+
+    def test_alerts_are_listed_by_name_from_prometheus_state(self):
+        table = next(p for p in self.panels if p["type"] == "table")
+        target = table["targets"][0]
+        self.assertEqual(target["expr"], 'ALERTS{service="availability-api"}')
+        self.assertTrue(target["instant"])
+        self.assertEqual(target["format"], "table")
+        columns = table["transformations"][0]["options"]["indexByName"]
+        self.assertEqual(columns["alertname"], 0)   # the alert's name is the first column
+
+    def test_alert_history_shows_firing_alerts_by_name(self):
+        timeline = next(p for p in self.panels if p["title"] == "Alerts firing over time")
+        self.assertIn('alertstate="firing"', timeline["targets"][0]["expr"])
+        self.assertEqual(timeline["targets"][0]["legendFormat"], "{{alertname}}")
+
+    def test_alert_panels_sit_above_the_burn_rate_graph(self):
+        y = {p["title"]: p["gridPos"]["y"] for p in self.panels}
+        self.assertLess(y["Alerts now (Prometheus alert state)"], y["Error budget burn rate"])
 
     def test_runbook_is_linked(self):
         self.assertEqual(self.dashboard["links"][0]["url"], SPEC["runbook_url"])

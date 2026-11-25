@@ -143,6 +143,30 @@ def state_timeline(title, expr, legend, states, description="") -> dict:
     }
 
 
+def alerts_table(title, service, description="") -> dict:
+    """Prometheus's own alert state (the ALERTS series) for this service, one row per alert.
+    Shows the alert NAME, which a count can't, and is the same state Alertmanager receives."""
+    state_colours = {"firing": {"text": "firing", "color": "red", "index": 0},
+                     "pending": {"text": "pending", "color": "orange", "index": 1}}
+    return {
+        "type": "table", "title": title, "description": description, "datasource": DATASOURCE,
+        "targets": [{**_target(f'ALERTS{{service="{service}"}}', instant=True), "format": "table"}],
+        "fieldConfig": {
+            "defaults": {"noValue": "No alerts pending or firing",
+                         "custom": {"align": "auto", "cellOptions": {"type": "auto"}}},
+            "overrides": [{"matcher": {"id": "byName", "options": "alertstate"},
+                           "properties": [{"id": "custom.cellOptions", "value": {"type": "color-background"}},
+                                          {"id": "mappings", "value": [{"type": "value", "options": state_colours}]}]}],
+        },
+        "options": {"showHeader": True, "cellHeight": "sm",
+                    "sortBy": [{"displayName": "alertstate", "desc": False}]},
+        "transformations": [{"id": "organize", "options": {
+            "excludeByName": {"Time": True, "Value": True, "__name__": True, "service": True, "job": True},
+            "indexByName": {"alertname": 0, "alertstate": 1, "severity": 2, "slo": 3, "instance": 4},
+            "renameByName": {}}}],
+    }
+
+
 def build_dashboard(spec: dict) -> dict:
     service = spec["service"]
     rec = re.sub(r"[^a-zA-Z0-9_]", "_", service)          # same naming as generate.py
@@ -183,6 +207,15 @@ def build_dashboard(spec: dict) -> dict:
     L.add(stat("Alerts firing", f'count(ALERTS{{alertstate="firing", service="{service}"}}) or vector(0)',
                "none", _thresholds(("green", None), ("red", 1)),
                description="SLO burn-rate pages and cause-based warnings for this service."), 6, 5)
+    L.add(alerts_table("Alerts now (Prometheus alert state)", service,
+                       description="Every alert for this service that Prometheus is evaluating as pending or "
+                                   "firing right now, from its ALERTS series: the same state Alertmanager "
+                                   "receives. Burn-rate alerts page; cause alerts are warnings."), 12, 7)
+    L.add(state_timeline("Alerts firing over time",
+                         f'max by (alertname) (ALERTS{{service="{service}", alertstate="firing"}})',
+                         "{{alertname}}", [{"value": 1, "text": "firing", "color": "red"}],
+                         description="When each alert was firing, on the same time axis as the panels below. "
+                                     "Empty means not firing."), 12, 7)
     L.add(timeseries("Error budget burn rate",
                      [(no_traffic_is_zero(f"slo:{rec}:burn_rate:rate{w}"), w) for w in burn_windows], "suffix:×",
                      description="Pages fire when both windows of a pair cross their line: "

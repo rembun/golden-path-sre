@@ -1,0 +1,8 @@
+{
+  "source": "Prometheus /api/v1/query",
+  "page_threshold": 14.4,
+  "burn_rate_5m": 259.99,
+  "burn_rate_1h": 336.11,
+  "burn_rate_30m": 336.11,
+  "burn_rate_6h": 161.95
+}

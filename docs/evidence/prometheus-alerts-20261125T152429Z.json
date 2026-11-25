@@ -1,0 +1,133 @@
+{
+  "source": "Prometheus /api/v1/alerts",
+  "service": "availability-api",
+  "alerts": [
+    {
+      "labels": {
+        "alertname": "AvailabilityDependencyCircuitOpen",
+        "instance": "availability-api-8558cf546-5gpct",
+        "service": "availability-api",
+        "severity": "warning"
+      },
+      "annotations": {
+        "description": "The circuit breaker on availability-api-8558cf546-5gpct has been refusing requests for over a minute: the API is answering 503 instead of calling venue-capacity.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "Availability API circuit breaker is open"
+      },
+      "state": "pending",
+      "activeAt": "2026-11-25T15:27:20.70677209Z",
+      "value": "7.276113452874794e+00"
+    },
+    {
+      "labels": {
+        "alertname": "AvailabilityDependencyCircuitOpen",
+        "instance": "availability-api-8558cf546-5nl2c",
+        "service": "availability-api",
+        "severity": "warning"
+      },
+      "annotations": {
+        "description": "The circuit breaker on availability-api-8558cf546-5nl2c has been refusing requests for over a minute: the API is answering 503 instead of calling venue-capacity.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "Availability API circuit breaker is open"
+      },
+      "state": "pending",
+      "activeAt": "2026-11-25T15:26:50.70677209Z",
+      "value": "1.776725378027566e+01"
+    },
+    {
+      "labels": {
+        "alertname": "AvailabilityDependencyCircuitOpen",
+        "instance": "availability-api-8558cf546-58nkk",
+        "service": "availability-api",
+        "severity": "warning"
+      },
+      "annotations": {
+        "description": "The circuit breaker on availability-api-8558cf546-58nkk has been refusing requests for over a minute: the API is answering 503 instead of calling venue-capacity.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "Availability API circuit breaker is open"
+      },
+      "state": "pending",
+      "activeAt": "2026-11-25T15:27:20.70677209Z",
+      "value": "1.6254592087069003e+01"
+    },
+    {
+      "labels": {
+        "alertname": "AvailabilityDependencyTimeouts",
+        "service": "availability-api",
+        "severity": "warning"
+      },
+      "annotations": {
+        "description": "Calls to venue-capacity are timing out. Check the dependency's latency and health.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "Availability API dependency timeouts detected"
+      },
+      "state": "pending",
+      "activeAt": "2026-11-25T15:26:20.70677209Z",
+      "value": "8.345128717265868e-01"
+    },
+    {
+      "labels": {
+        "alertname": "AvailabilityApiSLOBurnRate5M",
+        "service": "availability-api",
+        "severity": "critical",
+        "slo": "availability-availability"
+      },
+      "annotations": {
+        "description": "Error budget burn rate is above 14.4x over both 5m and 1h windows. SLO target: 99.850%.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "availability-api SLO error budget burn is elevated"
+      },
+      "state": "firing",
+      "activeAt": "2026-11-25T15:26:51.836086122Z",
+      "value": "1.0651791889088891e+02"
+    },
+    {
+      "labels": {
+        "alertname": "AvailabilityApiSLOBurnRate30M",
+        "service": "availability-api",
+        "severity": "critical",
+        "slo": "availability-availability"
+      },
+      "annotations": {
+        "description": "Error budget burn rate is above 6x over both 30m and 6h windows. SLO target: 99.850%.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "availability-api SLO error budget burn is elevated"
+      },
+      "state": "firing",
+      "activeAt": "2026-11-25T15:26:51.836086122Z",
+      "value": "1.0651791889088898e+02"
+    },
+    {
+      "labels": {
+        "alertname": "AvailabilityApiSLOBurnRate2H",
+        "service": "availability-api",
+        "severity": "warning",
+        "slo": "availability-availability"
+      },
+      "annotations": {
+        "description": "Error budget burn rate is above 3x over both 2h and 24h windows. SLO target: 99.850%.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "availability-api SLO error budget burn is elevated"
+      },
+      "state": "firing",
+      "activeAt": "2026-11-25T15:26:21.836086122Z",
+      "value": "9.374512556543446e+01"
+    },
+    {
+      "labels": {
+        "alertname": "AvailabilityApiSLOBurnRate6H",
+        "service": "availability-api",
+        "severity": "warning",
+        "slo": "availability-availability"
+      },
+      "annotations": {
+        "description": "Error budget burn rate is above 1x over both 6h and 3d windows. SLO target: 99.850%.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "availability-api SLO error budget burn is elevated"
+      },
+      "state": "firing",
+      "activeAt": "2026-11-25T14:37:51.836086122Z",
+      "value": "1.3640472708113558e+02"
+    }
+  ]
+}

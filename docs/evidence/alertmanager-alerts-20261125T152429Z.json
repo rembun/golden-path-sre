@@ -1,0 +1,35 @@
+{
+  "source": "Alertmanager /api/v2/alerts",
+  "alerts": [
+    {
+      "annotations": {
+        "description": "Error budget burn rate is above 14.4x over both 5m and 1h windows. SLO target: 99.850%.",
+        "runbook_url": "https://github.com/rembun/golden-path-sre/blob/main/docs/runbooks/dependency-failure.md",
+        "summary": "availability-api SLO error budget burn is elevated"
+      },
+      "endsAt": "2026-11-25T15:30:51.836Z",
+      "fingerprint": "25b5e6a81f76aa03",
+      "receivers": [
+        {
+          "name": "null"
+        }
+      ],
+      "startsAt": "2026-11-25T15:26:51.836Z",
+      "status": {
+        "inhibitedBy": [],
+        "mutedBy": [],
+        "silencedBy": [],
+        "state": "active"
+      },
+      "updatedAt": "2026-11-25T15:26:52.832Z",
+      "generatorURL": "http://kps-kube-prometheus-stack-prometheus.observability:9090/graph?g0.expr=%28slo%3Aavailability_api%3Aburn_rate%3Arate5m+%3E+14.4%29+and+%28slo%3Aavailability_api%3Aburn_rate%3Arate1h+%3E+14.4%29&g0.tab=1",
+      "labels": {
+        "alertname": "AvailabilityApiSLOBurnRate5M",
+        "prometheus": "observability/kps-kube-prometheus-stack-prometheus",
+        "service": "availability-api",
+        "severity": "critical",
+        "slo": "availability-availability"
+      }
+    }
+  ]
+}
