@@ -1,24 +1,31 @@
-█ THRESHOLDS
+time="2026-11-25T10:09:42Z" level=warning msg="capacity outage starts (60s)" source=console
+time="2026-11-25T10:10:42Z" level=warning msg="capacity outage ends; watch whether the dependency recovers under retries" source=console
+
+  █ THRESHOLDS
 
     slo_good_requests
-    ✗ 'rate>=0.9985' rate=51.09%
+    ✗ 'rate>=0.9985' rate=79.22%
 
   █ TOTAL RESULTS
 
     CUSTOM
-    client_retries.................: 7581   10.528765/s
-    slo_good_requests..............: 51.09% 11879 out of 23248
+    client_retries.................: 8472   11.766116/s
+    slo_good_requests..............: 79.22% 48447 out of 61154
 
     HTTP
-    http_req_duration..............: avg=10.65ms p(95)=26.15ms p(99)=30.82ms max=336.86ms
-      { expected_response:true }...: avg=19.59ms p(95)=27.84ms p(99)=37.49ms max=310.06ms
-    http_req_failed................: 48.89% 11368 out of 23250
-    http_reqs......................: 23250  32.290436/s
+    http_req_duration..............: avg=14.56ms p(95)=25.35ms p(99)=27.17ms max=340.64ms
+      { expected_response:true }...: avg=18.09ms p(95)=25.63ms p(99)=27.52ms max=340.64ms
+    http_req_failed................: 20.77% 12706 out of 61156
+    http_reqs......................: 61156  84.934915/s
 
     EXECUTION
-    iteration_duration.............: avg=20.7ms  p(95)=27.96ms p(99)=37.13ms max=1m0s
-    iterations.....................: 15122  21.001977/s
-    vus............................: 1      min=0              max=5
+    iteration_duration.............: avg=19.08ms p(95)=26.1ms  p(99)=28.99ms max=1m0s
+    iterations.....................: 50402  69.999502/s
+    vus............................: 2      min=1              max=3
     vus_max........................: 101    min=101            max=101
 
-  time="2026-11-24T07:12:35Z" level=error msg="thresholds on metrics 'slo_good_requests' have been crossed"
+    NETWORK
+    data_received..................: 111 MB 154 kB/s
+    data_sent......................: 8.1 MB 11 kB/s
+
+time="2026-11-25T10:18:42Z" level=error msg="thresholds on metrics 'slo_good_requests' have been crossed"

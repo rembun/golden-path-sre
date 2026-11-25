@@ -5,7 +5,7 @@
 | **Service** | availability-api (namespace `bookings`) |
 | **Alerts** | **Pages:** `AvailabilityApiSLOBurnRate5M` (14.4× burn over 5m and 1h), `AvailabilityApiSLOBurnRate30M` (6× over 30m and 6h). **Context only (warning):** `AvailabilityDependencyCircuitOpen`, `AvailabilityDependencyTimeouts` |
 | **Owner** | Bookings team; venue-capacity is owned by its own team |
-| **Last reviewed** | 23 November 2026, by project author |
+| **Last reviewed** | 25 November 2026, by project author |
 
 ## Customer impact
 
@@ -92,6 +92,135 @@ The queries are here for Explore, or if Grafana is down.
 - During the Thursday launch window, tell the product owner straight away: the budget can be gone
   in minutes.
 - Status updates in the bookings incident channel every 15 minutes until resolved.
+
+## Validation evidence — 25 November 2026
+
+The dependency-outage storm scenario was executed against the rebuilt local
+K3s environment using:
+
+`make load SCENARIO=storm`
+
+The test injected a 60-second venue-capacity outage. k6 reported the outage
+starting at 10:09:42 UTC and ending at 10:10:42 UTC.
+
+### k6 results
+
+| Measurement | Observed result |
+|---|---:|
+| Total HTTP requests | 61,156 |
+| SLO-good requests | 48,447 |
+| SLO-good request rate | 79.22% |
+| HTTP request failure rate | 20.77% |
+| Client retries | 8,472 |
+| Average throughput | 84.93 requests/s |
+| Average HTTP latency | 14.56 ms |
+| HTTP latency p95 | 25.35 ms |
+| HTTP latency p99 | 27.17 ms |
+| Maximum HTTP latency | 340.64 ms |
+| Injected dependency outage | 60 seconds |
+
+The k6 SLO threshold was `rate>=0.9985` (99.85%). The observed rate was
+79.22%, so the threshold failed.
+
+### Grafana observations
+
+The availability-api · SLO dashboard, captured after the test, showed:
+
+- SLI over 30 days: 79.117%.
+- Error budget remaining: -13,822.2%.
+- One-hour burn rate: 139.2x.
+- Alerts firing: 2.
+- The burn-rate graph showed a sharp increase around the injected outage,
+  followed by elevated longer-window burn-rate values.
+
+These are dashboard observations at the time of capture. The 30-day SLI
+and error-budget figures are dashboard query results and should not be
+treated as the k6 test's standalone measurements.
+
+### Operational interpretation
+
+The test demonstrates that the injected dependency outage and associated
+request failures caused a significant availability SLO breach. The 8,472
+client retries provide evidence of retry activity during the scenario.
+
+The dashboard's elevated burn rate and firing alerts demonstrate that the
+observability and alerting path detected the impact.
+
+The test results alone do not establish that venue-capacity recovered
+without continued retry pressure, or that every API replica's circuit
+breaker transitioned through the expected states. Those behaviours must
+be verified using the circuit-state and dependency-outcome queries in
+this runbook.
+
+### Follow-up actions
+
+- Verify circuit-breaker state on every availability-api replica during
+  and after the outage.
+- Check whether dependency requests return to predominantly `ok` after
+  the injected outage ends.
+- Compare request rates before, during and after the outage to identify
+  sustained retry amplification.
+- Investigate why the SLO-good request rate fell to 79.22%, against the
+  99.85% target.
+- Capture the alert names and firing timestamps for the assessment evidence.
+
+
+## Storm-test evidence — 25 November 2026
+
+The dependency-outage storm scenario was executed against the local K3s environment using `make load SCENARIO=storm`.
+
+The test injected a 60-second venue-capacity outage. The k6 output recorded:
+
+- Outage started: 10:09:42 UTC
+- Outage ended: 10:10:42 UTC
+- Total HTTP requests: 61,156
+- SLO-good requests: 48,447 (79.22%)
+- HTTP request failure rate: 20.77%
+- Client retries: 8,472
+- Average throughput: 84.93 requests/second
+- Average latency: 14.56 ms
+- p95 latency: 25.35 ms
+- p99 latency: 27.17 ms
+- Maximum latency: 340.64 ms
+
+The required SLO threshold was 99.85%. The observed 79.22% success rate breached this threshold.
+
+### Dashboard observations
+
+The Grafana availability-api · SLO dashboard showed:
+
+- SLI over 30 days: 79.117%
+- Error budget remaining: -13,822.2%
+- One-hour burn rate: 139.2×
+- Alerts firing: 2
+
+The dashboard observations and k6 results represent different measurement windows and should be interpreted separately.
+
+### Evidence
+
+Screenshots are stored in `docs/evidence/picture/`.
+
+1. [Storm-test dashboard before the test](../evidence/picture/Screenshot%202026-11-25%20115547-storm-test-before.png.png)
+2. [Storm-test dashboard after the test](../evidence/picture/Screenshot%202026-11-25%20125623-storm-test-after.png.png)
+3. [Additional post-test dashboard evidence](../evidence/picture/Screenshot%202026-11-25%20125710-storm-test-after.png.png)
+4. [Alert evidence](../evidence/picture/Screenshot%202026-11-25%20125750-Alert.png)
+5. [k6 command-line results](../evidence/picture/Screenshot%202026-11-25%20125836-storm-test-cli-results.png)
+
+### Findings
+
+The test demonstrates that a short dependency outage can cause substantial availability degradation and error-budget consumption.
+
+The client retry count confirms retry activity during the test. Grafana's elevated burn rate and firing alerts demonstrate that the monitoring and alerting pipeline detected the impact.
+
+Further verification is required to establish circuit-breaker behaviour on every replica and confirm that dependency traffic returned to normal after the outage.
+
+### Follow-up actions
+
+- Verify circuit-breaker transitions across all availability-api replicas.
+- Confirm venue-capacity recovery after the injected outage.
+- Investigate retry amplification and client backoff behaviour.
+- Review the SLO breach and its impact on the error budget.
+- Retain the screenshots and k6 output as assessment evidence.
 
 ## Afterwards
 
