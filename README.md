@@ -72,7 +72,26 @@ Our assumption until the product team confirms it (DECISIONS.md, question Q1):
 3. **Budget recovers:** releases resume. Any single incident that used more than 20% of the budget
    gets a post-incident review either way.
 
-Budget left this month, in Grafana: `1 - slo:availability_api:error_ratio:rate30d / 0.0015`.
+Remaining error budget over the rolling 30-day SLO window, in Grafana: `1 - slo:availability_api:error_ratio:rate30d / 0.0015`.
+
+## Verification and evidence
+
+The latest GitHub Actions CI run passed for commit
+[`3f7c7bb`](https://github.com/rembun/golden-path-sre/commit/3f7c7bba736c08d5ec1438bc647028566a191aff).
+
+- [Latest CI run](https://github.com/rembun/golden-path-sre/actions/runs/45650887950)
+- [Test and operational evidence](docs/evidence/README.md)
+- [Dependency failure runbook](docs/runbooks/dependency-failure.md)
+- [Retry-storm exercise](docs/retry-storm.md)
+- [Architecture decisions, assumptions, costs and known gaps](DECISIONS.md)
+
+Run the local validation checks with `make test`, `make slo-test`,
+`make slo-verify` and `make policy`.
+
+The existing-k3s runtime path was validated. The default k3d path has
+not yet been exercised on the assessment host. Peak capacity also remains
+unvalidated in the constrained single-node environment; see
+[known gaps in DECISIONS.md](DECISIONS.md#7-known-gaps-and-shortcuts).
 
 ## Monitoring platform
 
